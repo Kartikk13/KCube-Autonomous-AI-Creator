@@ -1,3 +1,4 @@
+
 PERSONA = {
     "name": "Ada",
     "domain": "AI Security",
@@ -38,3 +39,4 @@ def render_system_prompt() -> str:
         f"When publishing, every piece of content must meet these standards: "
         f"{standards}."
     )
+
