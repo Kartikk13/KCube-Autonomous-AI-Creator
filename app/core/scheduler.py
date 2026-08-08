@@ -81,14 +81,17 @@ async def _run_agent_tick_async(agent_id: str) -> None:
         post_id = str(uuid.uuid4())
         topic_id = insert_topic(agent_id, researched, candidate_embedding)
         insert_post(
-            agent_id,
             post_id,
+            agent_id,
             topic_id,
             post["text"],
             post["rationale"],
+            researched.get("sources", []),
             post_embedding,
         )
         published_this_tick = True
+        topic_embeddings.append(candidate_embedding)
+        post_embeddings.append(post_embedding)
 
 
 async def run_agent_tick(agent_id: str) -> None:

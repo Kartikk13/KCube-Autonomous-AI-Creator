@@ -1,8 +1,39 @@
+import json
+import uuid
 from datetime import datetime, timezone
 
 from sqlalchemy import text
 
 from app.db.database import get_db
+
+
+def _serialize_embedding(embedding: list[float] | None) -> bytes | None:
+    if embedding is None:
+        return None
+    return json.dumps(embedding).encode("utf-8")
+
+
+def _deserialize_embedding(raw) -> list[float] | None:
+    if raw is None:
+        return None
+    if isinstance(raw, memoryview):
+        raw = raw.tobytes()
+    if isinstance(raw, bytes):
+        raw = raw.decode("utf-8")
+    if isinstance(raw, str):
+        try:
+            parsed = json.loads(raw)
+        except json.JSONDecodeError:
+            return None
+        if isinstance(parsed, list):
+            return [float(value) for value in parsed]
+    return None
+
+
+def _row_with_embedding(row) -> dict:
+    data = dict(row._mapping)
+    data["embedding"] = _deserialize_embedding(data.get("embedding"))
+    return data
 
 
 def insert_agent(agent_id, persona_name, persona_domain, persona_voice):
@@ -26,59 +57,105 @@ def insert_agent(agent_id, persona_name, persona_domain, persona_voice):
 
 
 def insert_topic(
-    topic_id,
-    agent_id,
-    title,
-    summary,
-    source_url,
-    discovered_at,
-    status,
-    rejection_reason=None,
-):
+    agent_id: str,
+    topic: dict,
+    embedding: list[float] | None = None,
+) -> str:
+    topic_id = str(uuid.uuid4())
+    discovered_at = datetime.now(timezone.utc).isoformat()
     with get_db() as conn:
         conn.execute(
             text(
                 """
                 INSERT INTO topics (
                     topic_id, agent_id, title, summary, source_url,
-                    discovered_at, status, rejection_reason
+                    discovered_at, status, rejection_reason, embedding
                 )
                 VALUES (
                     :topic_id, :agent_id, :title, :summary, :source_url,
-                    :discovered_at, :status, :rejection_reason
+                    :discovered_at, :status, :rejection_reason, :embedding
                 )
                 """
             ),
             {
                 "topic_id": topic_id,
                 "agent_id": agent_id,
-                "title": title,
-                "summary": summary,
-                "source_url": source_url,
+                "title": topic.get("title", ""),
+                "summary": topic.get("summary", ""),
+                "source_url": topic.get("source_url", ""),
                 "discovered_at": discovered_at,
-                "status": status,
-                "rejection_reason": rejection_reason,
+                "status": "published",
+                "rejection_reason": None,
+                "embedding": _serialize_embedding(embedding),
             },
         )
+    return topic_id
 
 
-def insert_post(id, agent_id, topic_id, text_content, rationale, sources, created_at):
+def insert_post(
+    post_id: str,
+    agent_id: str,
+    topic_id: str,
+    text_content: str,
+    rationale: str,
+    sources,
+    embedding: list[float] | None = None,
+):
+    created_at = datetime.now(timezone.utc).isoformat()
+    if isinstance(sources, list):
+        sources = json.dumps(sources)
     with get_db() as conn:
         conn.execute(
             text(
                 """
-                INSERT INTO posts (id, agent_id, topic_id, text, rationale, sources, created_at)
-                VALUES (:id, :agent_id, :topic_id, :text, :rationale, :sources, :created_at)
+                INSERT INTO posts (
+                    id, agent_id, topic_id, text, rationale, sources,
+                    created_at, embedding
+                )
+                VALUES (
+                    :id, :agent_id, :topic_id, :text, :rationale, :sources,
+                    :created_at, :embedding
+                )
                 """
             ),
             {
-                "id": id,
+                "id": post_id,
                 "agent_id": agent_id,
                 "topic_id": topic_id,
                 "text": text_content,
                 "rationale": rationale,
                 "sources": sources,
                 "created_at": created_at,
+                "embedding": _serialize_embedding(embedding),
+            },
+        )
+
+
+def insert_editorial_log(
+    agent_id: str,
+    candidate: dict,
+    decision: str,
+    reasoning: str,
+) -> None:
+    logged_at = datetime.now(timezone.utc).isoformat()
+    with get_db() as conn:
+        conn.execute(
+            text(
+                """
+                INSERT INTO editorial_log (
+                    agent_id, topic_id, decision, reasoning, logged_at
+                )
+                VALUES (
+                    :agent_id, :topic_id, :decision, :reasoning, :logged_at
+                )
+                """
+            ),
+            {
+                "agent_id": agent_id,
+                "topic_id": candidate.get("topic_id"),
+                "decision": decision,
+                "reasoning": reasoning,
+                "logged_at": logged_at,
             },
         )
 
@@ -96,7 +173,24 @@ def get_posts_for_feed(agent_id):
             ),
             {"agent_id": agent_id},
         )
-        return [dict(row._mapping) for row in result]
+        return [_row_with_embedding(row) for row in result]
+
+
+def get_recent_posts(agent_id, limit=20):
+    with get_db() as conn:
+        result = conn.execute(
+            text(
+                """
+                SELECT id, agent_id, topic_id, text, rationale, sources, created_at, embedding
+                FROM posts
+                WHERE agent_id = :agent_id
+                ORDER BY created_at DESC
+                LIMIT :limit
+                """
+            ),
+            {"agent_id": agent_id, "limit": limit},
+        )
+        return [_row_with_embedding(row) for row in result]
 
 
 def get_recent_topics(agent_id, limit=20):
@@ -115,4 +209,4 @@ def get_recent_topics(agent_id, limit=20):
             ),
             {"agent_id": agent_id, "limit": limit},
         )
-        return [dict(row._mapping) for row in result]
+        return [_row_with_embedding(row) for row in result]
