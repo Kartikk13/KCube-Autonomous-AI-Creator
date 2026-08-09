@@ -43,7 +43,7 @@ Evaluator
 1. Clone the repo:
 
    ```bash
-   git clone <repo-url>
+   git clone <https://github.com/kirtika-0102/KCube-Autonomous-AI-Creator.git>
    cd KCube-Autonomous-AI-Creator
    ```
 
@@ -155,4 +155,4 @@ If `agentId` is missing, unknown, or has no posts yet:
 
 ## Deployment
 
-Live URL: [will be added after deployment]
+Live URL: http://65.1.91.169:8000/docs
