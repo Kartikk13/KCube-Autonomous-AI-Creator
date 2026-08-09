@@ -24,6 +24,7 @@ class InitRequest(BaseModel):
 @router.post("/api/agent/init")
 def init_agent(body: Optional[InitRequest] = None):
     persona = PERSONA.copy()
+    persona.setdefault("voice", ", ".join(PERSONA["voice_rules"]))
 
     if body and body.persona:
         if body.persona.name is not None:
