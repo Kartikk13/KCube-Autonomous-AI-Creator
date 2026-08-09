@@ -24,10 +24,7 @@ def client(tmp_path, monkeypatch):
     from app.db.database import init_db
     from app.main import app
 
-    persona.PERSONA.setdefault(
-        "voice",
-        "; ".join(persona.PERSONA["voice_rules"]),
-    )
+    
     monkeypatch.setattr(init_route, "start_scheduler", lambda agent_id: None)
 
     init_db()
